@@ -55,24 +55,24 @@ export class AudioService {
   private getAudioAsset(fileName: string) {
     // Static mapping required for Metro bundler
     const audioAssets: { [key: string]: any } = {
-      "ocean_waves.mp3": null, // Will be: require('../../assets/sounds/ocean_waves.mp3')
-      "rain_light.mp3": null,
-      "forest_birds.mp3": null,
-      "white_noise.mp3": null,
-      "coffee_shop.mp3": null,
-      "brown_noise.mp3": null,
-      "rain_thunder.mp3": null,
-      "night_crickets.mp3": null,
-      "fireplace.mp3": null,
-      "flowing_water.mp3": null,
-      "city_rain.mp3": null,
-      "wind_chimes.mp3": null,
-      "tibetan_bowls.mp3": null,
-      "ambient_drone.mp3": null,
-      "om_chanting.mp3": null,
-      "gentle_piano.mp3": null,
-      "deep_breathing.mp3": null,
-      "alpha_waves.mp3": null,
+      "ocean_waves.mp3": require("../../assets/sounds/ocean_waves.mp3"),
+      "rain_light.mp3": require("../../assets/sounds/rain_light.mp3"),
+      "forest_birds.mp3": require("../../assets/sounds/forest_birds.mp3"),
+      "white_noise.mp3": require("../../assets/sounds/white_noise.mp3"),
+      "coffee_shop.mp3": require("../../assets/sounds/coffee_shop.mp3"),
+      "brown_noise.mp3": require("../../assets/sounds/brown_noise.mp3"),
+      "rain_thunder.mp3": require("../../assets/sounds/rain_thunder.mp3"),
+      "night_crickets.mp3": require("../../assets/sounds/night_crickets.mp3"),
+      "fireplace.mp3": require("../../assets/sounds/fireplace.mp3"),
+      "flowing_water.mp3": require("../../assets/sounds/flowing_water.mp3"),
+      "city_rain.mp3": require("../../assets/sounds/city_rain.mp3"),
+      "wind_chimes.mp3": require("../../assets/sounds/wind_chimes.mp3"),
+      "tibetan_bowls.mp3": require("../../assets/sounds/tibetan_bowls.mp3"),
+      "ambient_drone.mp3": require("../../assets/sounds/ambient_drone.mp3"),
+      "om_chanting.mp3": require("../../assets/sounds/om_chanting.mp3"),
+      "gentle_piano.mp3": require("../../assets/sounds/gentle_piano.mp3"),
+      "deep_breathing.mp3": require("../../assets/sounds/deep_breathing.mp3"),
+      "alpha_waves.mp3": require("../../assets/sounds/alpha_waves.mp3"),
     };
 
     return audioAssets[fileName] || null;

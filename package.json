@@ -7,7 +7,8 @@
     "android": "expo start --android",
     "ios": "expo start --ios",
     "web": "expo start --web",
-    "setup-audio": "node scripts/setup-audio.js"
+    "setup-audio": "node scripts/setup-audio.js",
+    "convert-audio": "node scripts/convert-audio.js"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "2.1.2",
