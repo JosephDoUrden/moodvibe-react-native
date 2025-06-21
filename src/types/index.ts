@@ -129,6 +129,25 @@ export interface UserPreferences {
   favoritesMixIds: string[];
 }
 
+export const DEFAULT_PREFERENCES: UserPreferences = {
+  theme: "auto",
+  defaultTimerDuration: 30 * 60 * 1000, // 30 minutes in milliseconds
+  autoPlay: true,
+  notifications: true,
+  masterVolume: 0.8,
+  favoritesSoundIds: [],
+  favoritesMixIds: [],
+};
+
+export const DEFAULT_TIMER_OPTIONS = [
+  { label: "15 minutes", value: 15 * 60 * 1000 },
+  { label: "30 minutes", value: 30 * 60 * 1000 },
+  { label: "1 hour", value: 60 * 60 * 1000 },
+  { label: "2 hours", value: 2 * 60 * 60 * 1000 },
+  { label: "4 hours", value: 4 * 60 * 60 * 1000 },
+  { label: "8 hours", value: 8 * 60 * 60 * 1000 },
+];
+
 export interface SessionData {
   moodId: string;
   soundId?: string;
@@ -160,6 +179,7 @@ export interface MoodCardProps {
   mood: Mood;
   onPress: (mood: Mood) => void;
   isSelected?: boolean;
+  animationDelay?: number;
 }
 
 export interface SoundCardProps {
@@ -209,22 +229,4 @@ export enum ErrorCode {
   PERMISSION_DENIED = "PERMISSION_DENIED",
 }
 
-// Constants are now in separate data files
-
-export const DEFAULT_TIMER_OPTIONS = [
-  { label: "15 minutes", value: 15 * 60 * 1000 },
-  { label: "30 minutes", value: 30 * 60 * 1000 },
-  { label: "1 hour", value: 60 * 60 * 1000 },
-  { label: "2 hours", value: 2 * 60 * 60 * 1000 },
-  { label: "8 hours", value: 8 * 60 * 60 * 1000 },
-];
-
-export const DEFAULT_PREFERENCES: UserPreferences = {
-  theme: "auto",
-  defaultTimerDuration: 30 * 60 * 1000, // 30 minutes
-  autoPlay: true,
-  notifications: true,
-  masterVolume: 0.8,
-  favoritesSoundIds: [],
-  favoritesMixIds: [],
-};
+// Constants are defined above with UserPreferences interface

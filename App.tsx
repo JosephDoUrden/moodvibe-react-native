@@ -10,6 +10,10 @@ import MoodSelectionScreen from "./src/screens/MoodSelectionScreen";
 import SoundPlayerScreen from "./src/screens/SoundPlayerScreen";
 import SoundLibraryScreen from "./src/screens/SoundLibraryScreen";
 import SettingsScreen from "./src/screens/SettingsScreen";
+import MixCreatorScreen from "./src/screens/MixCreatorScreen";
+
+// Contexts
+import { ThemeProvider, useTheme } from "./src/contexts/ThemeContext";
 
 // Types
 import { RootStackParamList } from "./src/types";
@@ -18,6 +22,8 @@ const Stack = createStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator();
 
 const MainTabNavigator = () => {
+  const { theme } = useTheme();
+
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
@@ -36,15 +42,15 @@ const MainTabNavigator = () => {
 
           return <Ionicons name={iconName} size={size} color={color} />;
         },
-        tabBarActiveTintColor: "#6B73FF",
-        tabBarInactiveTintColor: "gray",
+        tabBarActiveTintColor: theme.primary,
+        tabBarInactiveTintColor: theme.icon,
         tabBarStyle: {
-          backgroundColor: "#FFFFFF",
+          backgroundColor: theme.surface,
           borderTopWidth: 1,
-          borderTopColor: "#E8E8E8",
-          paddingBottom: 5,
-          paddingTop: 5,
-          height: 60,
+          borderTopColor: theme.border,
+          paddingBottom: 25,
+          paddingTop: 8,
+          height: 85,
         },
         tabBarLabelStyle: {
           fontSize: 12,
@@ -72,10 +78,12 @@ const MainTabNavigator = () => {
   );
 };
 
-export default function App() {
+const AppContent = () => {
+  const { isDark } = useTheme();
+
   return (
     <NavigationContainer>
-      <StatusBar style="auto" />
+      <StatusBar style={isDark ? "light" : "dark"} />
       <Stack.Navigator
         screenOptions={{
           headerShown: false,
@@ -118,7 +126,36 @@ export default function App() {
             },
           }}
         />
+        <Stack.Screen
+          name="MixCreator"
+          component={MixCreatorScreen}
+          options={{
+            gestureDirection: "vertical",
+            cardStyleInterpolator: ({ current, layouts }) => {
+              return {
+                cardStyle: {
+                  transform: [
+                    {
+                      translateY: current.progress.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [layouts.screen.height, 0],
+                      }),
+                    },
+                  ],
+                },
+              };
+            },
+          }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
+  );
+};
+
+export default function App() {
+  return (
+    <ThemeProvider>
+      <AppContent />
+    </ThemeProvider>
   );
 }

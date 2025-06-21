@@ -16,9 +16,12 @@ import { Ionicons } from "@expo/vector-icons";
 import Slider from "@react-native-community/slider";
 import { settingsService } from "../services/SettingsService";
 import { favoritesService } from "../services/FavoritesService";
+import { audioService } from "../services/AudioService";
 import { UserPreferences, DEFAULT_TIMER_OPTIONS } from "../types";
+import { useTheme } from "../contexts/ThemeContext";
 
 const SettingsScreen: React.FC = () => {
+  const { theme } = useTheme();
   const [settings, setSettings] = useState<UserPreferences>(
     settingsService.getSettings()
   );
@@ -31,6 +34,13 @@ const SettingsScreen: React.FC = () => {
     };
 
     settingsService.addListener(handleSettingsChange);
+
+    // Load initial favorites count
+    const loadFavoritesCount = async () => {
+      const favorites = await favoritesService.getFavorites();
+      setFavoritesCount(favorites.size);
+    };
+    loadFavoritesCount();
 
     return () => {
       settingsService.removeListener(handleSettingsChange);
@@ -51,32 +61,32 @@ const SettingsScreen: React.FC = () => {
   }, []);
 
   const handleThemePress = () => {
-    const options = ["Light", "Dark", "Auto", "Cancel"];
-    const currentIndex = ["light", "dark", "auto"].indexOf(settings.theme);
+    const themes = ["Auto", "Light", "Dark"];
+    const currentTheme = settings.theme;
+    const currentIndex = themes.findIndex(
+      (theme) => theme.toLowerCase() === currentTheme
+    );
 
     if (Platform.OS === "ios") {
       ActionSheetIOS.showActionSheetWithOptions(
         {
-          options,
-          cancelButtonIndex: 3,
+          options: [...themes, "Cancel"],
+          cancelButtonIndex: themes.length,
           title: "Choose Theme",
+          message: "Select your preferred app theme",
         },
         (buttonIndex) => {
-          if (buttonIndex < 3) {
-            const themes: ("light" | "dark" | "auto")[] = [
-              "light",
-              "dark",
-              "auto",
-            ];
-            settingsService.setTheme(themes[buttonIndex]);
+          if (buttonIndex < themes.length) {
+            settingsService.setTheme(themes[buttonIndex].toLowerCase() as any);
           }
         }
       );
     } else {
       Alert.alert("Choose Theme", "", [
-        { text: "Light", onPress: () => settingsService.setTheme("light") },
-        { text: "Dark", onPress: () => settingsService.setTheme("dark") },
-        { text: "Auto", onPress: () => settingsService.setTheme("auto") },
+        ...themes.map((theme) => ({
+          text: theme,
+          onPress: () => settingsService.setTheme(theme.toLowerCase() as any),
+        })),
         { text: "Cancel", style: "cancel" },
       ]);
     }
@@ -87,10 +97,6 @@ const SettingsScreen: React.FC = () => {
       ...DEFAULT_TIMER_OPTIONS.map((opt) => opt.label),
       "Cancel",
     ];
-    const currentDuration = settings.defaultTimerDuration;
-    const currentIndex = DEFAULT_TIMER_OPTIONS.findIndex(
-      (opt) => opt.value === currentDuration
-    );
 
     if (Platform.OS === "ios") {
       ActionSheetIOS.showActionSheetWithOptions(
@@ -98,6 +104,7 @@ const SettingsScreen: React.FC = () => {
           options,
           cancelButtonIndex: options.length - 1,
           title: "Default Timer Duration",
+          message: "Choose how long sessions should last by default",
         },
         (buttonIndex) => {
           if (buttonIndex < DEFAULT_TIMER_OPTIONS.length) {
@@ -107,44 +114,54 @@ const SettingsScreen: React.FC = () => {
           }
         }
       );
-    } else {
-      Alert.alert("Default Timer Duration", "", [
-        ...DEFAULT_TIMER_OPTIONS.map((opt) => ({
-          text: opt.label,
-          onPress: () => settingsService.setDefaultTimerDuration(opt.value),
-        })),
-        { text: "Cancel", style: "cancel" },
-      ]);
     }
   };
 
-  const handleVolumeChange = (volume: number) => {
-    settingsService.setMasterVolume(volume);
+  const handleVolumeChange = async (volume: number) => {
+    try {
+      await settingsService.setMasterVolume(volume);
+      // Update audio service immediately
+      await audioService.setVolume(volume);
+    } catch (error) {
+      console.error("Failed to update volume:", error);
+    }
   };
 
-  const handleNotificationsToggle = (value: boolean) => {
-    settingsService.setNotifications(value);
+  const handleNotificationsToggle = async (value: boolean) => {
+    try {
+      await settingsService.setNotifications(value);
+    } catch (error) {
+      console.error("Failed to update notifications:", error);
+    }
   };
 
-  const handleAutoPlayToggle = (value: boolean) => {
-    settingsService.setAutoPlay(value);
+  const handleAutoPlayToggle = async (value: boolean) => {
+    try {
+      await settingsService.setAutoPlay(value);
+    } catch (error) {
+      console.error("Failed to update auto-play:", error);
+    }
   };
 
   const handleResetSettings = () => {
     Alert.alert(
-      "Reset Settings",
-      "This will reset all settings to their default values. This action cannot be undone.",
+      "Reset All Settings",
+      "This will reset all your preferences to default values. This action cannot be undone.",
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Reset",
           style: "destructive",
-          onPress: () => {
-            settingsService.resetSettings();
-            Alert.alert(
-              "Success",
-              "Settings have been reset to default values"
-            );
+          onPress: async () => {
+            try {
+              await settingsService.resetSettings();
+              Alert.alert(
+                "Success",
+                "All settings have been reset to default values"
+              );
+            } catch (error) {
+              Alert.alert("Error", "Failed to reset settings");
+            }
           },
         },
       ]
@@ -153,226 +170,274 @@ const SettingsScreen: React.FC = () => {
 
   const handleClearFavorites = () => {
     Alert.alert(
-      "Clear Favorites",
+      "Clear All Favorites",
       `This will remove all ${favoritesCount} favorite sounds. This action cannot be undone.`,
       [
         { text: "Cancel", style: "cancel" },
         {
           text: "Clear",
           style: "destructive",
-          onPress: () => {
-            favoritesService.clearFavorites();
-            Alert.alert("Success", "All favorites have been cleared");
+          onPress: async () => {
+            try {
+              await favoritesService.clearFavorites();
+              Alert.alert("Success", "All favorites have been cleared");
+            } catch (error) {
+              Alert.alert("Error", "Failed to clear favorites");
+            }
           },
         },
       ]
     );
   };
 
-  const handleExportSettings = () => {
+  const handleExportSettings = async () => {
     try {
-      const settingsJson = settingsService.exportSettings();
-      // In a real app, you might use share functionality or copy to clipboard
+      const settingsData = await settingsService.exportSettings();
+      // In a real app, you'd share this via the Share API
       Alert.alert(
-        "Export Settings",
-        "Settings exported successfully. You can save this data for backup.",
+        "Settings Exported",
+        "Settings have been exported successfully",
         [{ text: "OK" }]
       );
-      console.log("Exported settings:", settingsJson);
     } catch (error) {
       Alert.alert("Error", "Failed to export settings");
     }
   };
 
-  const renderSettingItem = (
+  const renderSection = (title: string, children: React.ReactNode) => (
+    <View style={styles.section}>
+      <Text style={[styles.sectionTitle, { color: theme.textSecondary }]}>
+        {title}
+      </Text>
+      <View style={[styles.sectionContent, { backgroundColor: theme.surface }]}>
+        {children}
+      </View>
+    </View>
+  );
+
+  const renderSettingRow = (
     icon: string,
     title: string,
     subtitle: string,
-    value: string,
+    value?: string,
     onPress?: () => void,
-    rightComponent?: React.ReactNode
+    rightComponent?: React.ReactNode,
+    isLast?: boolean
   ) => (
     <TouchableOpacity
-      style={styles.settingItem}
+      style={[
+        styles.settingRow,
+        isLast && styles.settingRowLast,
+        { borderBottomColor: theme.border },
+      ]}
       onPress={onPress}
       disabled={!onPress && !rightComponent}
+      activeOpacity={onPress ? 0.7 : 1}
     >
-      <View style={styles.settingLeft}>
+      <View style={[styles.settingIcon, { backgroundColor: theme.background }]}>
         <Ionicons
           name={icon as keyof typeof Ionicons.glyphMap}
-          size={24}
-          color="#6B73FF"
-          style={styles.settingIcon}
+          size={22}
+          color={theme.primary}
         />
-        <View style={styles.settingText}>
-          <Text style={styles.settingTitle}>{title}</Text>
-          <Text style={styles.settingSubtitle}>{subtitle}</Text>
-        </View>
       </View>
-      <View style={styles.settingRight}>
-        {rightComponent || (
-          <>
-            <Text style={styles.settingValue}>{value}</Text>
-            {onPress && (
-              <Ionicons name="chevron-forward" size={20} color="#BDC3C7" />
-            )}
-          </>
-        )}
+      <View style={styles.settingContent}>
+        <View style={styles.settingText}>
+          <Text style={[styles.settingTitle, { color: theme.text }]}>
+            {title}
+          </Text>
+          <Text
+            style={[styles.settingSubtitle, { color: theme.textSecondary }]}
+          >
+            {subtitle}
+          </Text>
+        </View>
+        <View style={styles.settingAction}>
+          {rightComponent || (
+            <>
+              {value && (
+                <Text
+                  style={[styles.settingValue, { color: theme.textSecondary }]}
+                >
+                  {value}
+                </Text>
+              )}
+              {onPress && (
+                <Ionicons
+                  name="chevron-forward-outline"
+                  size={18}
+                  color={theme.iconSecondary}
+                />
+              )}
+            </>
+          )}
+        </View>
       </View>
     </TouchableOpacity>
   );
 
-  const renderVolumeSlider = () => (
-    <View style={styles.settingItem}>
-      <View style={styles.settingLeft}>
-        <Ionicons
-          name="volume-high-outline"
-          size={24}
-          color="#6B73FF"
-          style={styles.settingIcon}
-        />
-        <View style={styles.settingText}>
-          <Text style={styles.settingTitle}>Master Volume</Text>
-          <Text style={styles.settingSubtitle}>Default volume level</Text>
-        </View>
+  const renderVolumeRow = () => (
+    <View style={[styles.settingRow, styles.settingRowLast]}>
+      <View style={[styles.settingIcon, { backgroundColor: theme.background }]}>
+        <Ionicons name="volume-high-outline" size={22} color={theme.primary} />
       </View>
-      <View style={styles.volumeContainer}>
-        <Text style={styles.volumeText}>
-          {Math.round(settings.masterVolume * 100)}%
-        </Text>
-        <Slider
-          style={styles.volumeSlider}
-          minimumValue={0}
-          maximumValue={1}
-          value={settings.masterVolume}
-          onValueChange={handleVolumeChange}
-          minimumTrackTintColor="#6B73FF"
-          maximumTrackTintColor="#E8E8E8"
-        />
+      <View style={styles.settingContent}>
+        <View style={styles.settingText}>
+          <Text style={[styles.settingTitle, { color: theme.text }]}>
+            Master Volume
+          </Text>
+          <Text
+            style={[styles.settingSubtitle, { color: theme.textSecondary }]}
+          >
+            Default volume level
+          </Text>
+        </View>
+        <View style={styles.volumeControl}>
+          <Text
+            style={[styles.volumePercentage, { color: theme.textSecondary }]}
+          >
+            {Math.round(settings.masterVolume * 100)}%
+          </Text>
+          <Slider
+            style={styles.volumeSlider}
+            minimumValue={0}
+            maximumValue={1}
+            value={settings.masterVolume}
+            onValueChange={handleVolumeChange}
+            minimumTrackTintColor={theme.primary}
+            maximumTrackTintColor={theme.border}
+            thumbTintColor={theme.primary}
+          />
+        </View>
       </View>
     </View>
   );
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
-      <ScrollView contentContainerStyle={styles.content}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Settings</Text>
-          <Text style={styles.subtitle}>
-            Customize your MoodVibe experience
-          </Text>
-        </View>
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: theme.background }]}
+    >
+      <StatusBar
+        barStyle="dark-content"
+        backgroundColor="transparent"
+        translucent
+      />
 
+      {/* Header */}
+      <View style={[styles.header, { backgroundColor: theme.background }]}>
+        <Text style={[styles.headerTitle, { color: theme.text }]}>
+          Settings
+        </Text>
+        <Text style={[styles.headerSubtitle, { color: theme.textSecondary }]}>
+          Customize your MoodVibe experience
+        </Text>
+      </View>
+
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
         {/* Preferences Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Preferences</Text>
+        {renderSection(
+          "Preferences",
+          <>
+            {renderSettingRow(
+              "moon-outline",
+              "Appearance",
+              "Choose your preferred theme",
+              settings.theme.charAt(0).toUpperCase() + settings.theme.slice(1),
+              handleThemePress
+            )}
+            {renderSettingRow(
+              "timer-outline",
+              "Default Timer",
+              "Default session duration",
+              settingsService.getFormattedTimerDuration(),
+              handleTimerPress
+            )}
+            {renderSettingRow(
+              "play-outline",
+              "Auto-play",
+              "Automatically start playing when mood is selected",
+              undefined,
+              undefined,
+              <Switch
+                value={settings.autoPlay}
+                onValueChange={handleAutoPlayToggle}
+                trackColor={{ false: "#E5E5EA", true: "#34C759" }}
+                thumbColor="#FFFFFF"
+                ios_backgroundColor="#E5E5EA"
+              />
+            )}
+            {renderSettingRow(
+              "notifications-outline",
+              "Notifications",
+              "Receive app notifications and reminders",
+              undefined,
+              undefined,
+              <Switch
+                value={settings.notifications}
+                onValueChange={handleNotificationsToggle}
+                trackColor={{ false: "#E5E5EA", true: "#34C759" }}
+                thumbColor="#FFFFFF"
+                ios_backgroundColor="#E5E5EA"
+              />,
+              true
+            )}
+          </>
+        )}
 
-          {renderSettingItem(
-            "color-palette-outline",
-            "Theme",
-            "App appearance",
-            settings.theme.charAt(0).toUpperCase() + settings.theme.slice(1),
-            handleThemePress
-          )}
-
-          {renderSettingItem(
-            "timer-outline",
-            "Default Timer",
-            "Default session duration",
-            settingsService.getFormattedTimerDuration(),
-            handleTimerPress
-          )}
-
-          {renderSettingItem(
-            "play-outline",
-            "Auto-play",
-            "Start playing when mood is selected",
-            "",
-            undefined,
-            <Switch
-              value={settings.autoPlay}
-              onValueChange={handleAutoPlayToggle}
-              trackColor={{ false: "#E8E8E8", true: "#6B73FF" }}
-              thumbColor="#FFFFFF"
-            />
-          )}
-
-          {renderSettingItem(
-            "notifications-outline",
-            "Notifications",
-            "App notifications",
-            "",
-            undefined,
-            <Switch
-              value={settings.notifications}
-              onValueChange={handleNotificationsToggle}
-              trackColor={{ false: "#E8E8E8", true: "#6B73FF" }}
-              thumbColor="#FFFFFF"
-            />
-          )}
-
-          {renderVolumeSlider()}
-        </View>
+        {/* Audio Section */}
+        {renderSection("Audio", <>{renderVolumeRow()}</>)}
 
         {/* Data Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Data</Text>
+        {renderSection(
+          "Data & Storage",
+          <>
+            {renderSettingRow(
+              "heart-outline",
+              "Favorites",
+              `${favoritesCount} sounds marked as favorite`,
+              undefined,
+              favoritesCount > 0 ? handleClearFavorites : undefined
+            )}
+            {renderSettingRow(
+              "download-outline",
+              "Export Settings",
+              "Create a backup of your preferences",
+              undefined,
+              handleExportSettings,
+              undefined,
+              true
+            )}
+          </>
+        )}
 
-          {renderSettingItem(
-            "heart",
-            "Favorites",
-            `${favoritesCount} sounds favorited`,
-            "",
-            favoritesCount > 0 ? handleClearFavorites : undefined,
-            favoritesCount > 0 ? (
-              <TouchableOpacity onPress={handleClearFavorites}>
-                <Text style={styles.clearButton}>Clear</Text>
-              </TouchableOpacity>
-            ) : undefined
-          )}
+        {/* Danger Zone */}
+        {renderSection(
+          "Reset",
+          <>
+            {renderSettingRow(
+              "refresh-outline",
+              "Reset All Settings",
+              "Restore all preferences to default values",
+              undefined,
+              handleResetSettings,
+              undefined,
+              true
+            )}
+          </>
+        )}
 
-          {renderSettingItem(
-            "download-outline",
-            "Export Settings",
-            "Backup your preferences",
-            "",
-            handleExportSettings
-          )}
-
-          {renderSettingItem(
-            "refresh-outline",
-            "Reset Settings",
-            "Restore default values",
-            "",
-            handleResetSettings
-          )}
-        </View>
-
-        {/* About Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>About</Text>
-
-          {renderSettingItem(
-            "information-circle-outline",
-            "Version",
-            "App version",
-            "1.0.0"
-          )}
-
-          {renderSettingItem("code-outline", "Build", "Build number", "2024.1")}
-
-          {renderSettingItem(
-            "star-outline",
-            "Rate App",
-            "Help us improve",
-            "",
-            () =>
-              Alert.alert(
-                "Coming Soon",
-                "App Store rating will be available soon"
-              )
-          )}
+        {/* App Info */}
+        <View style={styles.appInfo}>
+          <Text style={[styles.appInfoText, { color: theme.textSecondary }]}>
+            MoodVibe v1.0.0
+          </Text>
+          <Text style={[styles.appInfoSubtext, { color: theme.textTertiary }]}>
+            Built with ♥ for mindful moments
+          </Text>
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -382,101 +447,121 @@ const SettingsScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
-  },
-  content: {
-    padding: 20,
   },
   header: {
-    marginBottom: 32,
-    alignItems: "center",
+    paddingHorizontal: 20,
+    paddingTop: Platform.OS === "ios" ? 10 : 40,
+    paddingBottom: 20,
   },
-  title: {
-    fontSize: 28,
+  headerTitle: {
+    fontSize: 34,
     fontWeight: "700",
-    color: "#2C3E50",
-    textAlign: "center",
-    marginBottom: 8,
+    marginBottom: 4,
   },
-  subtitle: {
-    fontSize: 16,
-    color: "#7F8C8D",
-    textAlign: "center",
+  headerSubtitle: {
+    fontSize: 17,
     lineHeight: 22,
   },
-  section: {
-    marginBottom: 32,
-  },
-  sectionTitle: {
-    fontSize: 18,
-    fontWeight: "600",
-    color: "#2C3E50",
-    marginBottom: 16,
-    paddingLeft: 4,
-  },
-  settingItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    padding: 16,
-    marginBottom: 2,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 1 },
-    shadowOpacity: 0.05,
-    shadowRadius: 2,
-    elevation: 2,
-  },
-  settingLeft: {
-    flexDirection: "row",
-    alignItems: "center",
+  scrollView: {
     flex: 1,
   },
+  scrollContent: {
+    paddingHorizontal: 20,
+    paddingBottom: 40,
+  },
+  section: {
+    marginBottom: 35,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: "400",
+    textTransform: "uppercase",
+    letterSpacing: -0.08,
+    marginBottom: 8,
+    paddingHorizontal: 16,
+  },
+  sectionContent: {
+    borderRadius: 12,
+    overflow: "hidden",
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  settingRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    minHeight: 60,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+  },
+  settingRowLast: {
+    borderBottomWidth: 0,
+  },
   settingIcon: {
-    marginRight: 16,
+    width: 32,
+    height: 32,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    marginRight: 12,
+  },
+  settingContent: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
   },
   settingText: {
     flex: 1,
+    marginRight: 12,
   },
   settingTitle: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#2C3E50",
+    fontSize: 17,
+    fontWeight: "400",
     marginBottom: 2,
   },
   settingSubtitle: {
-    fontSize: 14,
-    color: "#7F8C8D",
+    fontSize: 15,
+    lineHeight: 20,
   },
-  settingRight: {
+  settingAction: {
     flexDirection: "row",
     alignItems: "center",
   },
   settingValue: {
-    fontSize: 14,
-    color: "#7F8C8D",
+    fontSize: 17,
     marginRight: 8,
   },
-  volumeContainer: {
+  volumeControl: {
     flexDirection: "row",
     alignItems: "center",
-    minWidth: 120,
+    minWidth: 140,
   },
-  volumeText: {
-    fontSize: 14,
-    color: "#7F8C8D",
-    minWidth: 35,
+  volumePercentage: {
+    fontSize: 17,
+    minWidth: 40,
+    textAlign: "right",
+    marginRight: 12,
   },
   volumeSlider: {
     flex: 1,
     height: 40,
-    marginLeft: 10,
   },
-  clearButton: {
-    fontSize: 14,
-    color: "#FF6B6B",
+  appInfo: {
+    alignItems: "center",
+    paddingTop: 20,
+    paddingBottom: 10,
+  },
+  appInfoText: {
+    fontSize: 15,
     fontWeight: "500",
+    marginBottom: 4,
+  },
+  appInfoSubtext: {
+    fontSize: 13,
   },
 });
 

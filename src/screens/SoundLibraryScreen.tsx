@@ -10,20 +10,36 @@ import {
   TextInput,
   FlatList,
   Alert,
+  Platform,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import { LinearGradient } from "expo-linear-gradient";
 import {
   SOUNDS,
   getSoundsByCategory,
-  getFreeSound,
+  getFreeSounds,
   getPremiumSounds,
 } from "../data/sounds";
 import { audioService } from "../services/AudioService";
 import { favoritesService } from "../services/FavoritesService";
-import { Sound, SoundCategory, PlaybackState } from "../types";
+import {
+  Sound,
+  SoundCategory,
+  PlaybackState,
+  RootStackParamList,
+} from "../types";
+import { useNavigation } from "@react-navigation/native";
+import { StackNavigationProp } from "@react-navigation/stack";
+import { useTheme } from "../contexts/ThemeContext";
+
+type SoundLibraryNavigationProp = StackNavigationProp<
+  RootStackParamList,
+  "SoundLibrary"
+>;
 
 const SoundLibraryScreen: React.FC = () => {
+  const navigation = useNavigation<SoundLibraryNavigationProp>();
+  const { theme } = useTheme();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
@@ -77,7 +93,7 @@ const SoundLibraryScreen: React.FC = () => {
     // Filter by category
     if (selectedCategory !== "all") {
       if (selectedCategory === "free") {
-        sounds = getFreeSound();
+        sounds = getFreeSounds();
       } else if (selectedCategory === "premium") {
         sounds = getPremiumSounds();
       } else if (selectedCategory === "favorites") {
@@ -143,12 +159,6 @@ const SoundLibraryScreen: React.FC = () => {
           ]}
           onPress={() => setSelectedCategory(category.id)}
         >
-          <Ionicons
-            name={category.icon as keyof typeof Ionicons.glyphMap}
-            size={16}
-            color={selectedCategory === category.id ? "#FFFFFF" : "#6B73FF"}
-            style={styles.categoryIcon}
-          />
           <Text
             style={[
               styles.categoryText,
@@ -192,7 +202,7 @@ const SoundLibraryScreen: React.FC = () => {
             >
               <Ionicons
                 name={isFavorite ? "heart" : "heart-outline"}
-                size={20}
+                size={16}
                 color={isFavorite ? "#FF6B6B" : "#BDC3C7"}
               />
             </TouchableOpacity>
@@ -203,7 +213,7 @@ const SoundLibraryScreen: React.FC = () => {
             >
               <Ionicons
                 name={isPlaying ? "pause" : "play"}
-                size={20}
+                size={16}
                 color="#FFFFFF"
               />
             </TouchableOpacity>
@@ -227,38 +237,59 @@ const SoundLibraryScreen: React.FC = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <StatusBar barStyle="dark-content" backgroundColor="#ffffff" />
+    <SafeAreaView
+      style={[styles.container, { backgroundColor: theme.background }]}
+    >
+      <StatusBar barStyle="dark-content" backgroundColor={theme.surface} />
 
       {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.title}>Sound Library</Text>
-        <Text style={styles.subtitle}>
-          Discover and explore {SOUNDS.length} ambient sounds
-        </Text>
+        <View style={styles.headerContent}>
+          <View>
+            <Text style={[styles.title, { color: theme.text }]}>
+              Sound Library
+            </Text>
+            <Text style={[styles.subtitle, { color: theme.textSecondary }]}>
+              Discover and explore {SOUNDS.length} ambient sounds
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={[styles.createMixButton, { backgroundColor: theme.primary }]}
+            onPress={() => navigation.navigate("MixCreator", {})}
+          >
+            <Ionicons name="layers" size={16} color="#FFFFFF" />
+            <Text style={styles.createMixText}>Mix</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       {/* Search Bar */}
-      <View style={styles.searchContainer}>
+      <View
+        style={[styles.searchContainer, { backgroundColor: theme.surface }]}
+      >
         <Ionicons
           name="search"
-          size={20}
-          color="#BDC3C7"
+          size={16}
+          color={theme.iconSecondary}
           style={styles.searchIcon}
         />
         <TextInput
-          style={styles.searchInput}
+          style={[styles.searchInput, { color: theme.text }]}
           placeholder="Search sounds, moods, or tags..."
           value={searchQuery}
           onChangeText={setSearchQuery}
-          placeholderTextColor="#BDC3C7"
+          placeholderTextColor={theme.textSecondary}
         />
         {searchQuery.length > 0 && (
           <TouchableOpacity
             onPress={() => setSearchQuery("")}
             style={styles.clearButton}
           >
-            <Ionicons name="close-circle" size={20} color="#BDC3C7" />
+            <Ionicons
+              name="close-circle"
+              size={16}
+              color={theme.iconSecondary}
+            />
           </TouchableOpacity>
         )}
       </View>
@@ -284,7 +315,7 @@ const SoundLibraryScreen: React.FC = () => {
         showsVerticalScrollIndicator={false}
         ListEmptyComponent={() => (
           <View style={styles.emptyState}>
-            <Ionicons name="musical-notes-outline" size={64} color="#BDC3C7" />
+            <Ionicons name="musical-notes-outline" size={48} color="#BDC3C7" />
             <Text style={styles.emptyTitle}>No sounds found</Text>
             <Text style={styles.emptyDescription}>
               Try adjusting your search or category filter
@@ -299,110 +330,133 @@ const SoundLibraryScreen: React.FC = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#F8F9FA",
+    backgroundColor: "#F2F2F7",
   },
   header: {
     paddingHorizontal: 20,
-    paddingVertical: 20,
+    paddingTop: Platform.OS === "ios" ? 10 : 30,
+    paddingBottom: 8,
+  },
+  headerContent: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "flex-start",
+    width: "100%",
+  },
+  createMixButton: {
+    backgroundColor: "#007AFF",
+    flexDirection: "row",
     alignItems: "center",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 18,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  createMixText: {
+    color: "#FFFFFF",
+    fontSize: 13,
+    fontWeight: "600",
+    marginLeft: 4,
   },
   title: {
     fontSize: 28,
     fontWeight: "700",
-    color: "#2C3E50",
-    textAlign: "center",
-    marginBottom: 8,
+    color: "#000000",
+    marginBottom: 2,
   },
   subtitle: {
-    fontSize: 16,
-    color: "#7F8C8D",
-    textAlign: "center",
-    lineHeight: 22,
+    fontSize: 15,
+    color: "#8E8E93",
+    lineHeight: 20,
   },
   searchContainer: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "#FFFFFF",
     marginHorizontal: 20,
-    marginBottom: 20,
-    paddingHorizontal: 16,
-    paddingVertical: 12,
-    borderRadius: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    marginBottom: 4,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 10,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
   },
   searchIcon: {
     marginRight: 12,
+    color: "#8E8E93",
   },
   searchInput: {
     flex: 1,
-    fontSize: 16,
-    color: "#2C3E50",
+    fontSize: 17,
+    color: "#000000",
   },
   clearButton: {
     padding: 4,
   },
   categoryContainer: {
-    marginBottom: 16,
+    maxHeight: 40,
+    marginBottom: 4,
   },
   categoryContent: {
     paddingHorizontal: 20,
+    paddingVertical: 6,
   },
   categoryChip: {
-    flexDirection: "row",
+    paddingHorizontal: 12,
+    paddingVertical: 4,
+    borderRadius: 14,
+    marginRight: 6,
+    backgroundColor: "#E8E8E8",
+    height: 28,
+    justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#FFFFFF",
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
-    marginRight: 12,
-    borderWidth: 1,
-    borderColor: "#6B73FF",
   },
   selectedCategoryChip: {
-    backgroundColor: "#6B73FF",
-    borderColor: "#6B73FF",
-  },
-  categoryIcon: {
-    marginRight: 6,
+    backgroundColor: "#007AFF",
   },
   categoryText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "500",
-    color: "#6B73FF",
+    color: "#666666",
   },
   selectedCategoryText: {
     color: "#FFFFFF",
+    fontWeight: "600",
   },
   resultsContainer: {
     paddingHorizontal: 20,
-    marginBottom: 16,
+    marginBottom: 4,
+    marginTop: 4,
   },
   resultsText: {
-    fontSize: 14,
-    color: "#7F8C8D",
-    fontWeight: "500",
+    fontSize: 13,
+    color: "#8E8E93",
+    fontWeight: "400",
   },
   soundList: {
     flex: 1,
   },
   soundListContent: {
     paddingHorizontal: 20,
-    paddingBottom: 20,
+    paddingBottom: 40,
   },
   soundCard: {
     backgroundColor: "#FFFFFF",
     borderRadius: 12,
     padding: 16,
     marginBottom: 12,
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
+    shadowColor: "#000000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
     shadowRadius: 4,
-    elevation: 3,
+    elevation: 2,
   },
   soundCardHeader: {
     flexDirection: "row",
@@ -415,15 +469,16 @@ const styles = StyleSheet.create({
     marginRight: 16,
   },
   soundName: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: "600",
-    color: "#2C3E50",
+    color: "#000000",
     marginBottom: 4,
+    letterSpacing: -0.2,
   },
   soundDescription: {
     fontSize: 14,
-    color: "#7F8C8D",
-    lineHeight: 20,
+    color: "#8E8E93",
+    lineHeight: 18,
     marginBottom: 8,
   },
   soundTags: {
@@ -431,16 +486,16 @@ const styles = StyleSheet.create({
     flexWrap: "wrap",
   },
   tag: {
-    backgroundColor: "#F1F2F6",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
+    backgroundColor: "#F2F2F7",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
     borderRadius: 12,
-    marginRight: 6,
-    marginBottom: 4,
+    marginRight: 8,
+    marginBottom: 6,
   },
   tagText: {
-    fontSize: 12,
-    color: "#6B73FF",
+    fontSize: 13,
+    color: "#007AFF",
     fontWeight: "500",
   },
   soundActions: {
@@ -448,48 +503,61 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   favoriteButton: {
-    padding: 8,
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: "#F2F2F7",
+    alignItems: "center",
+    justifyContent: "center",
     marginRight: 8,
   },
   playButton: {
-    backgroundColor: "#6B73FF",
-    borderRadius: 20,
-    padding: 8,
-    minWidth: 36,
+    backgroundColor: "#007AFF",
+    borderRadius: 18,
+    width: 36,
+    height: 36,
     alignItems: "center",
+    justifyContent: "center",
+    shadowColor: "#007AFF",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 3,
+    elevation: 2,
   },
   playingButton: {
-    backgroundColor: "#FF6B6B",
+    backgroundColor: "#FF3B30",
+    shadowColor: "#FF3B30",
   },
   soundCardFooter: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
+    marginTop: 4,
   },
   categoryBadge: {
-    backgroundColor: "#E8F4FD",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    backgroundColor: "#E5F3FF",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
   },
   categoryBadgeText: {
-    fontSize: 12,
-    color: "#6B73FF",
-    fontWeight: "500",
+    fontSize: 13,
+    color: "#007AFF",
+    fontWeight: "600",
     textTransform: "capitalize",
   },
   premiumBadge: {
     flexDirection: "row",
     alignItems: "center",
-    backgroundColor: "#FFF9E6",
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 12,
+    backgroundColor: "#FFF5E6",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 14,
   },
   premiumText: {
-    fontSize: 12,
-    color: "#F39C12",
-    fontWeight: "500",
+    fontSize: 13,
+    color: "#FF9500",
+    fontWeight: "600",
     marginLeft: 4,
   },
   emptyState: {
@@ -498,17 +566,18 @@ const styles = StyleSheet.create({
     paddingVertical: 60,
   },
   emptyTitle: {
-    fontSize: 20,
+    fontSize: 18,
     fontWeight: "600",
-    color: "#2C3E50",
+    color: "#000000",
     marginTop: 16,
-    marginBottom: 8,
+    marginBottom: 6,
   },
   emptyDescription: {
-    fontSize: 16,
-    color: "#7F8C8D",
+    fontSize: 14,
+    color: "#8E8E93",
     textAlign: "center",
-    lineHeight: 22,
+    lineHeight: 20,
+    paddingHorizontal: 40,
   },
 });
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   View,
   Text,
@@ -7,10 +7,13 @@ import {
   TouchableOpacity,
   Alert,
   StatusBar,
+  Animated,
+  Platform,
 } from "react-native";
 import { useRoute, useNavigation, RouteProp } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
 import { LinearGradient } from "expo-linear-gradient";
+import * as Haptics from "expo-haptics";
 import Slider from "@react-native-community/slider";
 import { Ionicons } from "@expo/vector-icons";
 import { audioService } from "../services/AudioService";
@@ -35,9 +38,28 @@ const SoundPlayerScreen: React.FC = () => {
   const [availableSounds, setAvailableSounds] = useState<Sound[]>([]);
   const [currentSoundIndex, setCurrentSoundIndex] = useState(0);
 
+  // Animation refs
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const scaleAnim = useRef(new Animated.Value(0.95)).current;
+
   const mood = MOODS.find((m) => m.id === moodId);
 
   useEffect(() => {
+    // Entrance animation
+    Animated.parallel([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }),
+      Animated.spring(scaleAnim, {
+        toValue: 1,
+        tension: 300,
+        friction: 8,
+        useNativeDriver: true,
+      }),
+    ]).start();
+
     // Initialize audio service
     const initAudio = async () => {
       try {
@@ -67,10 +89,14 @@ const SoundPlayerScreen: React.FC = () => {
     return () => {
       audioService.removeStateListener(handleStateChange);
     };
-  }, [moodId]);
+  }, [moodId, fadeAnim, scaleAnim]);
 
   const handlePlayPause = async () => {
     try {
+      // Add haptic feedback on iOS
+      if (Platform.OS === "ios") {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      }
       await audioService.togglePlayback();
     } catch (error) {
       console.error("Playback error:", error);
@@ -80,6 +106,9 @@ const SoundPlayerScreen: React.FC = () => {
 
   const handleStop = async () => {
     try {
+      if (Platform.OS === "ios") {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
       await audioService.stopSound();
     } catch (error) {
       console.error("Stop error:", error);
@@ -96,6 +125,9 @@ const SoundPlayerScreen: React.FC = () => {
 
   const handleNextSound = async () => {
     if (availableSounds.length > 1) {
+      if (Platform.OS === "ios") {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
       const nextIndex = (currentSoundIndex + 1) % availableSounds.length;
       setCurrentSoundIndex(nextIndex);
       try {
@@ -108,6 +140,9 @@ const SoundPlayerScreen: React.FC = () => {
 
   const handlePreviousSound = async () => {
     if (availableSounds.length > 1) {
+      if (Platform.OS === "ios") {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }
       const prevIndex =
         currentSoundIndex === 0
           ? availableSounds.length - 1
@@ -151,9 +186,12 @@ const SoundPlayerScreen: React.FC = () => {
   if (!mood || availableSounds.length === 0) {
     return (
       <SafeAreaView style={styles.container}>
-        <View style={styles.loadingContainer}>
+        <LinearGradient
+          colors={["#F2F2F7", "#E5E5EA"]}
+          style={styles.loadingContainer}
+        >
           <Text style={styles.loadingText}>Loading sounds...</Text>
-        </View>
+        </LinearGradient>
       </SafeAreaView>
     );
   }
@@ -167,95 +205,143 @@ const SoundPlayerScreen: React.FC = () => {
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        {/* Header */}
-        <View style={styles.header}>
-          <TouchableOpacity
-            onPress={() => navigation.goBack()}
-            style={styles.backButton}
-          >
-            <Ionicons name="arrow-back" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-          <Text style={styles.moodName}>{mood.name}</Text>
-          <TouchableOpacity onPress={handleSetTimer} style={styles.timerButton}>
-            <Ionicons name="timer-outline" size={24} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
+        <Animated.View
+          style={[
+            styles.content,
+            {
+              opacity: fadeAnim,
+              transform: [{ scale: scaleAnim }],
+            },
+          ]}
+        >
+          {/* Header */}
+          <View style={styles.header}>
+            <TouchableOpacity
+              onPress={() => navigation.goBack()}
+              style={styles.backButton}
+            >
+              <Ionicons name="chevron-back" size={28} color="#FFFFFF" />
+            </TouchableOpacity>
+            <View style={styles.headerCenter}>
+              <Text style={styles.moodName}>{mood.name}</Text>
+              <Text style={styles.moodSubtitle}>
+                {availableSounds.length} sounds available
+              </Text>
+            </View>
+            <View style={styles.headerActions}>
+              <TouchableOpacity
+                onPress={() => navigation.navigate("MixCreator", { moodId })}
+                style={styles.headerButton}
+              >
+                <Ionicons name="layers-outline" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handleSetTimer}
+                style={styles.headerButton}
+              >
+                <Ionicons name="timer-outline" size={24} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
+          </View>
 
-        {/* Current Sound Display */}
-        <View style={styles.soundInfo}>
-          <Text style={styles.soundEmoji}>{mood.icon}</Text>
-          <Text style={styles.soundName}>
-            {currentSound?.name || "No Sound"}
-          </Text>
-          <Text style={styles.soundDescription}>
-            {currentSound?.description || mood.description}
-          </Text>
-        </View>
-
-        {/* Progress and Timer Info */}
-        <View style={styles.progressContainer}>
-          {playbackState.timerEndTime && (
-            <Text style={styles.timerText}>
-              Timer:{" "}
-              {formatTime(playbackState.timerEndTime.getTime() - Date.now())}
+          {/* Current Sound Display */}
+          <View style={styles.soundInfo}>
+            <View style={styles.emojiContainer}>
+              <Text style={styles.soundEmoji}>{mood.icon}</Text>
+            </View>
+            <Text style={styles.soundName}>
+              {currentSound?.name || "No Sound"}
             </Text>
+            <Text style={styles.soundDescription}>
+              {currentSound?.description || mood.description}
+            </Text>
+          </View>
+
+          {/* Timer Display */}
+          {playbackState.timerEndTime && (
+            <View style={styles.timerContainer}>
+              <Ionicons
+                name="timer-outline"
+                size={16}
+                color="rgba(255,255,255,0.8)"
+              />
+              <Text style={styles.timerText}>
+                {formatTime(playbackState.timerEndTime.getTime() - Date.now())}
+              </Text>
+            </View>
           )}
-        </View>
 
-        {/* Controls */}
-        <View style={styles.controls}>
-          <TouchableOpacity
-            onPress={handlePreviousSound}
-            style={[
-              styles.controlButton,
-              { opacity: availableSounds.length > 1 ? 1 : 0.3 },
-            ]}
-            disabled={availableSounds.length <= 1}
-          >
-            <Ionicons name="play-skip-back" size={32} color="#FFFFFF" />
-          </TouchableOpacity>
+          {/* Controls */}
+          <View style={styles.controlsContainer}>
+            <View style={styles.transportControls}>
+              <TouchableOpacity
+                onPress={handlePreviousSound}
+                style={[
+                  styles.transportButton,
+                  { opacity: availableSounds.length > 1 ? 1 : 0.4 },
+                ]}
+                disabled={availableSounds.length <= 1}
+              >
+                <Ionicons name="play-skip-back" size={32} color="#FFFFFF" />
+              </TouchableOpacity>
 
-          <TouchableOpacity onPress={handlePlayPause} style={styles.playButton}>
-            <Ionicons
-              name={playbackState.isPlaying ? "pause" : "play"}
-              size={48}
-              color="#FFFFFF"
-            />
-          </TouchableOpacity>
+              <TouchableOpacity
+                onPress={handlePlayPause}
+                style={styles.playButton}
+              >
+                <Ionicons
+                  name={playbackState.isPlaying ? "pause" : "play"}
+                  size={56}
+                  color="#FFFFFF"
+                />
+              </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={handleNextSound}
-            style={[
-              styles.controlButton,
-              { opacity: availableSounds.length > 1 ? 1 : 0.3 },
-            ]}
-            disabled={availableSounds.length <= 1}
-          >
-            <Ionicons name="play-skip-forward" size={32} color="#FFFFFF" />
-          </TouchableOpacity>
-        </View>
+              <TouchableOpacity
+                onPress={handleNextSound}
+                style={[
+                  styles.transportButton,
+                  { opacity: availableSounds.length > 1 ? 1 : 0.4 },
+                ]}
+                disabled={availableSounds.length <= 1}
+              >
+                <Ionicons name="play-skip-forward" size={32} color="#FFFFFF" />
+              </TouchableOpacity>
+            </View>
 
-        {/* Volume Control */}
-        <View style={styles.volumeContainer}>
-          <Ionicons name="volume-low" size={20} color="#FFFFFF" />
-          <Slider
-            style={styles.volumeSlider}
-            minimumValue={0}
-            maximumValue={1}
-            value={playbackState.volume}
-            onValueChange={handleVolumeChange}
-            minimumTrackTintColor="#FFFFFF"
-            maximumTrackTintColor="rgba(255,255,255,0.3)"
-            thumbTintColor="#FFFFFF"
-          />
-          <Ionicons name="volume-high" size={20} color="#FFFFFF" />
-        </View>
+            {/* Volume Control */}
+            <View style={styles.volumeContainer}>
+              <Ionicons
+                name="volume-low"
+                size={18}
+                color="rgba(255,255,255,0.8)"
+              />
+              <Slider
+                style={styles.volumeSlider}
+                minimumValue={0}
+                maximumValue={1}
+                value={playbackState.volume}
+                onValueChange={handleVolumeChange}
+                minimumTrackTintColor="#FFFFFF"
+                maximumTrackTintColor="rgba(255,255,255,0.3)"
+                thumbTintColor="#FFFFFF"
+              />
+              <Ionicons
+                name="volume-high"
+                size={18}
+                color="rgba(255,255,255,0.8)"
+              />
+              <Text style={styles.volumeText}>
+                {Math.round(playbackState.volume * 100)}%
+              </Text>
+            </View>
 
-        {/* Stop Button */}
-        <TouchableOpacity onPress={handleStop} style={styles.stopButton}>
-          <Ionicons name="stop" size={24} color="#FFFFFF" />
-          <Text style={styles.stopButtonText}>Stop</Text>
-        </TouchableOpacity>
+            {/* Stop Button */}
+            <TouchableOpacity onPress={handleStop} style={styles.stopButton}>
+              <Ionicons name="stop" size={20} color="#FFFFFF" />
+              <Text style={styles.stopButtonText}>Stop Session</Text>
+            </TouchableOpacity>
+          </View>
+        </Animated.View>
       </LinearGradient>
     </SafeAreaView>
   );
@@ -268,35 +354,64 @@ const styles = StyleSheet.create({
   background: {
     flex: 1,
   },
+  content: {
+    flex: 1,
+  },
   loadingContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#F8F9FA",
   },
   loadingText: {
-    fontSize: 18,
-    color: "#7F8C8D",
+    fontSize: 17,
+    color: "#8E8E93",
+    fontWeight: "500",
   },
   header: {
     flexDirection: "row",
     justifyContent: "space-between",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingTop: 20,
-    paddingBottom: 10,
+    paddingTop: Platform.OS === "ios" ? 10 : 30,
+    paddingBottom: 20,
   },
   backButton: {
-    padding: 8,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  headerCenter: {
+    flex: 1,
+    alignItems: "center",
+    marginHorizontal: 16,
   },
   moodName: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: "600",
     color: "#FFFFFF",
     textAlign: "center",
+    marginBottom: 2,
   },
-  timerButton: {
-    padding: 8,
+  moodSubtitle: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.8)",
+    textAlign: "center",
+  },
+  headerActions: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  headerButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginLeft: 8,
   },
   soundInfo: {
     flex: 1,
@@ -304,81 +419,124 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 40,
   },
+  emojiContainer: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginBottom: 24,
+  },
   soundEmoji: {
-    fontSize: 80,
-    marginBottom: 20,
+    fontSize: 64,
   },
   soundName: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: "700",
     color: "#FFFFFF",
     textAlign: "center",
     marginBottom: 8,
     textShadowColor: "rgba(0, 0, 0, 0.3)",
     textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 2,
+    textShadowRadius: 3,
+    letterSpacing: -0.5,
   },
   soundDescription: {
-    fontSize: 16,
-    color: "#FFFFFF",
+    fontSize: 17,
+    color: "rgba(255,255,255,0.9)",
     textAlign: "center",
-    opacity: 0.9,
-    lineHeight: 22,
+    lineHeight: 24,
     textShadowColor: "rgba(0, 0, 0, 0.3)",
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
+    paddingHorizontal: 20,
   },
-  progressContainer: {
-    paddingHorizontal: 40,
+  timerContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(255,255,255,0.15)",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+    marginHorizontal: 40,
     marginBottom: 20,
   },
   timerText: {
-    fontSize: 16,
+    fontSize: 15,
     color: "#FFFFFF",
-    textAlign: "center",
-    opacity: 0.9,
+    marginLeft: 6,
+    fontWeight: "500",
   },
-  controls: {
+  controlsContainer: {
+    paddingHorizontal: 40,
+    paddingBottom: 40,
+  },
+  transportControls: {
     flexDirection: "row",
     justifyContent: "center",
     alignItems: "center",
-    paddingHorizontal: 40,
-    marginBottom: 40,
+    marginBottom: 32,
   },
-  controlButton: {
-    padding: 20,
+  transportButton: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: "rgba(255,255,255,0.15)",
+    alignItems: "center",
+    justifyContent: "center",
   },
   playButton: {
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    borderRadius: 40,
-    padding: 20,
-    marginHorizontal: 30,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    alignItems: "center",
+    justifyContent: "center",
+    marginHorizontal: 40,
+    shadowColor: "rgba(0,0,0,0.3)",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 1,
+    shadowRadius: 8,
   },
   volumeContainer: {
     flexDirection: "row",
     alignItems: "center",
-    paddingHorizontal: 40,
-    marginBottom: 30,
+    marginBottom: 24,
+    backgroundColor: "rgba(255,255,255,0.1)",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 16,
   },
   volumeSlider: {
     flex: 1,
     height: 40,
-    marginHorizontal: 15,
+    marginHorizontal: 12,
+  },
+  volumeText: {
+    fontSize: 13,
+    color: "rgba(255,255,255,0.8)",
+    minWidth: 36,
+    textAlign: "right",
+    fontWeight: "500",
   },
   stopButton: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-    marginHorizontal: 40,
-    marginBottom: 40,
-    paddingVertical: 12,
-    paddingHorizontal: 20,
-    borderRadius: 25,
+    backgroundColor: "rgba(255,255,255,0.2)",
+    paddingVertical: 16,
+    paddingHorizontal: 24,
+    borderRadius: 28,
+    shadowColor: "rgba(0,0,0,0.2)",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 4,
   },
   stopButtonText: {
     color: "#FFFFFF",
-    fontSize: 16,
+    fontSize: 17,
     fontWeight: "600",
     marginLeft: 8,
   },
