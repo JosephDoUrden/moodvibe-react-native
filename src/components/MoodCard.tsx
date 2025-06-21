@@ -18,12 +18,12 @@ const MoodCard: React.FC<MoodCardProps> = ({
       activeOpacity={0.8}
     >
       <LinearGradient
-        colors={mood.gradient as string[]}
+        colors={mood.gradientColors}
         style={styles.gradientCard}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
       >
-        <Text style={styles.emoji}>{mood.emoji}</Text>
+        <Text style={styles.emoji}>{mood.icon}</Text>
         <Text style={styles.moodName}>{mood.name}</Text>
         <Text style={styles.moodDescription}>{mood.description}</Text>
       </LinearGradient>

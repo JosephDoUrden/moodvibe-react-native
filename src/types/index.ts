@@ -2,46 +2,121 @@
 export interface Mood {
   id: string;
   name: string;
-  emoji: string;
   description: string;
   color: string;
-  gradient: string[];
+  gradientColors: [string, string];
+  icon: string;
+  sounds: string[];
 }
 
 export interface Sound {
   id: string;
   name: string;
+  description: string;
   fileName: string;
+  duration: number;
   category: SoundCategory;
-  moodIds: string[];
-  duration?: number;
+  tags: string[];
   isLooped: boolean;
   isPremium: boolean;
-  description?: string;
-  tags: string[];
+  isFavorite?: boolean;
+}
+
+export type SoundCategory =
+  | "nature"
+  | "urban"
+  | "white-noise"
+  | "instrumental"
+  | "binaural";
+
+// Enhanced types for sound mixing
+export interface ActiveSound {
+  id: string;
+  sound: any; // Audio.Sound instance
+  volume: number;
+  soundData: Sound;
+  isPlaying: boolean;
+  position: number;
+  startTime: Date;
 }
 
 export interface SoundMix {
   id: string;
   name: string;
+  description?: string;
   sounds: Array<{
     soundId: string;
     volume: number;
   }>;
-  moodId?: string;
+  isPlaying: boolean;
   isCustom: boolean;
+  isPremium: boolean;
+  moodId?: string;
+  tags: string[];
   createdAt: Date;
+  updatedAt: Date;
+  playCount: number;
 }
 
 export interface PlaybackState {
+  // Single sound mode
   isPlaying: boolean;
   currentSound?: Sound;
-  currentMix?: SoundMix;
   volume: number;
   position: number;
   duration: number;
+
+  // Mix mode (new)
+  isMixMode: boolean;
+  currentMix?: SoundMix;
+  activeSounds: ActiveSound[];
+  mixVolume: number; // Master volume for mix
+
+  // Timer and effects
   timerEndTime?: Date;
   fadeDuration?: number;
+
+  // Playback info
+  mode: "single" | "mix";
+}
+
+export interface TimerSettings {
+  duration: number; // in minutes
+  fadeOutDuration: number; // in seconds
+  isEnabled: boolean;
+}
+
+export interface AppSettings {
+  theme: "light" | "dark" | "auto";
+  timerDuration: number;
+  masterVolume: number;
+  autoPlayNext: boolean;
+  enableNotifications: boolean;
+  soundQuality: "standard" | "high";
+}
+
+// Mix creation and management
+export interface MixCreationState {
+  name: string;
+  description: string;
+  selectedSounds: Array<{
+    soundId: string;
+    volume: number;
+  }>;
+  isPreviewMode: boolean;
+  masterVolume: number;
+}
+
+export interface MixPreset {
+  id: string;
+  name: string;
+  description: string;
+  sounds: Array<{
+    soundId: string;
+    volume: number;
+  }>;
+  category: "focus" | "relax" | "sleep" | "energy" | "custom";
+  isPremium: boolean;
 }
 
 export interface UserPreferences {
@@ -106,14 +181,6 @@ export interface AudioPlayerProps {
 }
 
 // Enums
-export enum SoundCategory {
-  NATURE = "nature",
-  URBAN = "urban",
-  WHITE_NOISE = "white_noise",
-  INSTRUMENTAL = "instrumental",
-  BINAURAL = "binaural",
-}
-
 export enum PlaybackMode {
   SINGLE = "single",
   MIX = "mix",
@@ -125,12 +192,6 @@ export interface AudioServiceConfig {
   enableBackgroundPlayback: boolean;
   audioMode: "mix" | "single";
   crossfadeDuration: number;
-}
-
-export interface TimerConfig {
-  duration: number; // in milliseconds
-  fadeDuration: number; // in milliseconds
-  autoStop: boolean;
 }
 
 // Error Types
@@ -148,57 +209,7 @@ export enum ErrorCode {
   PERMISSION_DENIED = "PERMISSION_DENIED",
 }
 
-// Constants
-export const MOODS: Mood[] = [
-  {
-    id: "calm",
-    name: "Calm & Relaxed",
-    emoji: "😌",
-    description: "Find your inner peace",
-    color: "#6B73FF",
-    gradient: ["#6B73FF", "#9B59B6"],
-  },
-  {
-    id: "focused",
-    name: "Focused & Productive",
-    emoji: "🎯",
-    description: "Enhance your concentration",
-    color: "#FF6B6B",
-    gradient: ["#FF6B6B", "#FF8E53"],
-  },
-  {
-    id: "sleepy",
-    name: "Sleepy & Restful",
-    emoji: "😴",
-    description: "Drift into peaceful sleep",
-    color: "#4ECDC4",
-    gradient: ["#4ECDC4", "#44A08D"],
-  },
-  {
-    id: "energetic",
-    name: "Energetic & Motivated",
-    emoji: "⚡",
-    description: "Boost your energy levels",
-    color: "#FFD93D",
-    gradient: ["#FFD93D", "#FF6B6B"],
-  },
-  {
-    id: "meditative",
-    name: "Meditative & Mindful",
-    emoji: "🧘",
-    description: "Connect with your inner self",
-    color: "#A8E6CF",
-    gradient: ["#A8E6CF", "#88D8C0"],
-  },
-  {
-    id: "anxious",
-    name: "Anxious & Stressed",
-    emoji: "😰",
-    description: "Find calm in the storm",
-    color: "#B19CD9",
-    gradient: ["#B19CD9", "#9B59B6"],
-  },
-];
+// Constants are now in separate data files
 
 export const DEFAULT_TIMER_OPTIONS = [
   { label: "15 minutes", value: 15 * 60 * 1000 },

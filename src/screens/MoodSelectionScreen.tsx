@@ -10,7 +10,8 @@ import {
 import { useNavigation } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
 import MoodCard from "../components/MoodCard";
-import { MOODS, Mood, RootStackParamList } from "../types";
+import { MOODS } from "../data/moods";
+import { Mood, RootStackParamList } from "../types";
 
 type MoodSelectionNavigationProp = StackNavigationProp<
   RootStackParamList,

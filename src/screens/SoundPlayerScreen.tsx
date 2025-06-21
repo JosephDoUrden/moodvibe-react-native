@@ -15,7 +15,8 @@ import Slider from "@react-native-community/slider";
 import { Ionicons } from "@expo/vector-icons";
 import { audioService } from "../services/AudioService";
 import { getSoundsByMood } from "../data/sounds";
-import { MOODS, RootStackParamList, PlaybackState, Sound } from "../types";
+import { MOODS } from "../data/moods";
+import { RootStackParamList, PlaybackState, Sound } from "../types";
 
 type SoundPlayerRouteProp = RouteProp<RootStackParamList, "SoundPlayer">;
 type SoundPlayerNavigationProp = StackNavigationProp<
@@ -161,7 +162,7 @@ const SoundPlayerScreen: React.FC = () => {
     <SafeAreaView style={styles.container}>
       <StatusBar barStyle="light-content" />
       <LinearGradient
-        colors={mood.gradient as string[]}
+        colors={mood.gradientColors}
         style={styles.background}
         start={{ x: 0, y: 0 }}
         end={{ x: 1, y: 1 }}
@@ -182,7 +183,7 @@ const SoundPlayerScreen: React.FC = () => {
 
         {/* Current Sound Display */}
         <View style={styles.soundInfo}>
-          <Text style={styles.soundEmoji}>{mood.emoji}</Text>
+          <Text style={styles.soundEmoji}>{mood.icon}</Text>
           <Text style={styles.soundName}>
             {currentSound?.name || "No Sound"}
           </Text>
@@ -245,7 +246,7 @@ const SoundPlayerScreen: React.FC = () => {
             onValueChange={handleVolumeChange}
             minimumTrackTintColor="#FFFFFF"
             maximumTrackTintColor="rgba(255,255,255,0.3)"
-            thumbStyle={{ backgroundColor: "#FFFFFF" }}
+            thumbTintColor="#FFFFFF"
           />
           <Ionicons name="volume-high" size={20} color="#FFFFFF" />
         </View>

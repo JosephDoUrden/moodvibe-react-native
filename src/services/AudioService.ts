@@ -1,22 +1,59 @@
 import { Audio } from "expo-av";
-import { Sound, SoundMix, PlaybackState, TimerConfig } from "../types";
-import { getSoundById } from "../data/sounds";
+import { Sound, SoundMix, PlaybackState, ActiveSound } from "../types";
+import { getSoundById, SOUNDS } from "../data/sounds";
+
+interface TimerConfig {
+  duration: number;
+  fadeDuration: number;
+  autoStop: boolean;
+}
 
 export class AudioService {
   private static instance: AudioService;
-  private currentSound: Audio.Sound | null = null;
+
   private isInitialized: boolean = false;
   private playbackState: PlaybackState = {
     isPlaying: false,
     volume: 0.8,
     position: 0,
     duration: 0,
+    isMixMode: false,
+    activeSounds: [],
+    mixVolume: 0.8,
+    mode: "single",
   };
-  private timerInterval: NodeJS.Timeout | null = null;
   private statusUpdateInterval: NodeJS.Timeout | null = null;
   private stateListeners: ((state: PlaybackState) => void)[] = [];
+  private currentSoundObject: Audio.Sound | null = null;
+  private positionTimer: NodeJS.Timeout | null = null;
+  private timerTimeout: NodeJS.Timeout | null = null;
+  private isSimulationMode = false;
 
-  private constructor() {}
+  // Audio asset mapping for Metro bundler compatibility
+  private audioAssets: { [key: string]: any } = {
+    "ocean_waves.mp3": require("../../assets/sounds/ocean_waves.mp3"),
+    "rain_light.mp3": require("../../assets/sounds/rain_light.mp3"),
+    "forest_birds.mp3": require("../../assets/sounds/forest_birds.mp3"),
+    "rain_thunder.mp3": require("../../assets/sounds/rain_thunder.mp3"),
+    "night_crickets.mp3": require("../../assets/sounds/night_crickets.mp3"),
+    "flowing_water.mp3": require("../../assets/sounds/flowing_water.mp3"),
+    "wind_chimes.mp3": require("../../assets/sounds/wind_chimes.mp3"),
+    "coffee_shop.mp3": require("../../assets/sounds/coffee_shop.mp3"),
+    "fireplace.mp3": require("../../assets/sounds/fireplace.mp3"),
+    "city_rain.mp3": require("../../assets/sounds/city_rain.mp3"),
+    "white_noise.mp3": require("../../assets/sounds/white_noise.mp3"),
+    "brown_noise.mp3": require("../../assets/sounds/brown_noise.mp3"),
+    "tibetan_bowls.mp3": require("../../assets/sounds/tibetan_bowls.mp3"),
+    "ambient_drone.mp3": require("../../assets/sounds/ambient_drone.mp3"),
+    "om_chanting.mp3": require("../../assets/sounds/om_chanting.mp3"),
+    "gentle_piano.mp3": require("../../assets/sounds/gentle_piano.mp3"),
+    "deep_breathing.mp3": require("../../assets/sounds/deep_breathing.mp3"),
+    "alpha_waves.mp3": require("../../assets/sounds/alpha_waves.mp3"),
+  };
+
+  private constructor() {
+    this.initialize();
+  }
 
   public static getInstance(): AudioService {
     if (!AudioService.instance) {
@@ -44,38 +81,13 @@ export class AudioService {
       this.isInitialized = true;
       console.log("AudioService initialized successfully");
     } catch (error) {
-      console.error("Failed to initialize AudioService:", error);
-      throw error;
+      console.warn(
+        "Failed to initialize audio, falling back to simulation mode:",
+        error
+      );
+      this.isSimulationMode = true;
+      this.isInitialized = true;
     }
-  }
-
-  /**
-   * Static mapping of audio files (for Metro bundler compatibility)
-   */
-  private getAudioAsset(fileName: string) {
-    // Static mapping required for Metro bundler
-    const audioAssets: { [key: string]: any } = {
-      "ocean_waves.mp3": require("../../assets/sounds/ocean_waves.mp3"),
-      "rain_light.mp3": require("../../assets/sounds/rain_light.mp3"),
-      "forest_birds.mp3": require("../../assets/sounds/forest_birds.mp3"),
-      "white_noise.mp3": require("../../assets/sounds/white_noise.mp3"),
-      "coffee_shop.mp3": require("../../assets/sounds/coffee_shop.mp3"),
-      "brown_noise.mp3": require("../../assets/sounds/brown_noise.mp3"),
-      "rain_thunder.mp3": require("../../assets/sounds/rain_thunder.mp3"),
-      "night_crickets.mp3": require("../../assets/sounds/night_crickets.mp3"),
-      "fireplace.mp3": require("../../assets/sounds/fireplace.mp3"),
-      "flowing_water.mp3": require("../../assets/sounds/flowing_water.mp3"),
-      "city_rain.mp3": require("../../assets/sounds/city_rain.mp3"),
-      "wind_chimes.mp3": require("../../assets/sounds/wind_chimes.mp3"),
-      "tibetan_bowls.mp3": require("../../assets/sounds/tibetan_bowls.mp3"),
-      "ambient_drone.mp3": require("../../assets/sounds/ambient_drone.mp3"),
-      "om_chanting.mp3": require("../../assets/sounds/om_chanting.mp3"),
-      "gentle_piano.mp3": require("../../assets/sounds/gentle_piano.mp3"),
-      "deep_breathing.mp3": require("../../assets/sounds/deep_breathing.mp3"),
-      "alpha_waves.mp3": require("../../assets/sounds/alpha_waves.mp3"),
-    };
-
-    return audioAssets[fileName] || null;
   }
 
   /**
@@ -83,166 +95,130 @@ export class AudioService {
    */
   public async playSound(soundId: string): Promise<void> {
     try {
+      await this.initialize();
+
+      // Stop current sound if in single mode
+      if (!this.playbackState.isMixMode) {
+        await this.stopAllSounds();
+      }
+
       const soundData = getSoundById(soundId);
       if (!soundData) {
-        throw new Error(`Sound with id ${soundId} not found`);
+        throw new Error(`Sound not found: ${soundId}`);
       }
 
-      // Stop current sound if playing
-      await this.stopSound();
-
-      // Try to load real audio file first
-      const audioAsset = this.getAudioAsset(soundData.fileName);
-
-      if (audioAsset) {
-        try {
-          const { sound } = await Audio.Sound.createAsync(audioAsset, {
-            shouldPlay: true,
-            isLooping: soundData.isLooped,
-            volume: this.playbackState.volume,
-          });
-
-          this.currentSound = sound;
-          this.playbackState = {
-            ...this.playbackState,
-            currentSound: soundData,
-            isPlaying: true,
-          };
-
-          // Set up status updates
-          this.setupStatusUpdates();
-          this.notifyStateChange();
-
-          console.log(`Playing sound: ${soundData.name}`);
-          return;
-        } catch (audioError) {
-          console.warn(
-            `Audio file failed to load for ${soundData.name}, trying mock audio...`
-          );
-        }
-      } else {
-        console.warn(
-          `Audio asset not mapped for ${soundData.name}, trying mock audio...`
-        );
+      if (this.isSimulationMode) {
+        await this.simulatePlaySound(soundData);
+        return;
       }
 
-      // Fallback to mock audio
-      try {
-        const mockAudioUri = this.getMockAudioUri();
-        const { sound } = await Audio.Sound.createAsync(
-          { uri: mockAudioUri },
-          {
-            shouldPlay: true,
-            isLooping: soundData.isLooped,
-            volume: this.playbackState.volume,
-          }
-        );
+      const audioAsset = this.audioAssets[soundData.fileName];
+      if (!audioAsset) {
+        console.warn(`Audio asset not found for ${soundId}, using simulation`);
+        await this.simulatePlaySound(soundData);
+        return;
+      }
 
-        this.currentSound = sound;
-        this.playbackState = {
-          ...this.playbackState,
-          currentSound: soundData,
+      const { sound } = await Audio.Sound.createAsync(audioAsset, {
+        shouldPlay: true,
+        isLooping: soundData.isLooped,
+        volume: this.playbackState.volume,
+      });
+
+      if (this.playbackState.isMixMode) {
+        // Add to active sounds for mixing
+        const activeSound: ActiveSound = {
+          id: soundId,
+          sound: sound,
+          volume: this.playbackState.volume,
+          soundData: soundData,
           isPlaying: true,
+          position: 0,
+          startTime: new Date(),
         };
 
-        this.setupStatusUpdates();
-        this.notifyStateChange();
-
-        console.log(`Playing sound: ${soundData.name} (mock audio)`);
-      } catch (mockError) {
-        // Final fallback: simulate playback
-        console.log(
-          `Simulating playback for: ${soundData.name} (no audio available)`
-        );
-        this.simulatePlayback(soundData);
+        this.playbackState.activeSounds.push(activeSound);
+      } else {
+        // Single sound mode
+        this.currentSoundObject = sound;
+        this.playbackState.currentSound = soundData;
       }
+
+      this.playbackState.isPlaying = true;
+      this.playbackState.mode = this.playbackState.isMixMode ? "mix" : "single";
+
+      this.notifyStateChange();
+      this.startPositionUpdates();
     } catch (error) {
       console.error("Error playing sound:", error);
-      throw error;
-    }
-  }
-
-  /**
-   * Get a mock audio URI for development
-   */
-  private getMockAudioUri(): string {
-    // This is a short, silent audio file for testing
-    // In production, replace with actual sound files
-    return "data:audio/wav;base64,UklGRnoGAABXQVZFZm10IBAAAAABAAEAQB8AAEAfAAABAAgAZGF0YQoGAACBhYqFbF1fdJivrJBhNjVgodDbq2EcBj+a2/LDciUFLIHO8tiJNwgZaLvt559NEAxQp+PwtmMcBjiR1/LMeSwFJHfH8N2QQAoUXrTp66hVFApGn+DyvmUaAzuMzfDY";
-  }
-
-  /**
-   * Simulate playback without actual audio
-   */
-  private simulatePlayback(soundData: Sound): void {
-    this.playbackState = {
-      ...this.playbackState,
-      currentSound: soundData,
-      isPlaying: true,
-      duration: 60000, // Mock duration of 1 minute
-    };
-
-    // Mock status updates
-    this.setupMockStatusUpdates();
-    this.notifyStateChange();
-  }
-
-  /**
-   * Set up mock status updates for development
-   */
-  private setupMockStatusUpdates(): void {
-    this.clearStatusUpdates();
-
-    this.statusUpdateInterval = setInterval(() => {
-      if (this.playbackState.isPlaying && !this.currentSound) {
-        // Simulate playback progress
-        this.playbackState.position = Math.min(
-          this.playbackState.position + 1000,
-          this.playbackState.duration
-        );
-
-        // Loop if needed
-        if (this.playbackState.position >= this.playbackState.duration) {
-          const currentSound = this.playbackState.currentSound;
-          if (currentSound?.isLooped) {
-            this.playbackState.position = 0;
-          } else {
-            this.playbackState.isPlaying = false;
-          }
-        }
-
-        this.notifyStateChange();
+      // Fallback to simulation
+      const soundData = getSoundById(soundId);
+      if (soundData) {
+        await this.simulatePlaySound(soundData);
       }
-    }, 1000);
+    }
   }
 
   /**
    * Play/pause toggle
    */
   public async togglePlayback(): Promise<void> {
+    if (this.playbackState.isMixMode) {
+      await this.toggleMixPlayback();
+    } else {
+      await this.toggleSinglePlayback();
+    }
+  }
+
+  private async toggleMixPlayback(): Promise<void> {
+    const isPlaying = !this.playbackState.isPlaying;
+    this.playbackState.isPlaying = isPlaying;
+
+    for (const activeSound of this.playbackState.activeSounds) {
+      activeSound.isPlaying = isPlaying;
+
+      if (activeSound.sound && !this.isSimulationMode) {
+        try {
+          if (isPlaying) {
+            await activeSound.sound.playAsync();
+          } else {
+            await activeSound.sound.pauseAsync();
+          }
+        } catch (error) {
+          console.warn("Error toggling sound playback:", error);
+        }
+      }
+    }
+
+    if (isPlaying) {
+      this.startPositionUpdates();
+    } else {
+      this.stopPositionUpdates();
+    }
+
+    this.notifyStateChange();
+  }
+
+  private async toggleSinglePlayback(): Promise<void> {
+    if (this.isSimulationMode || !this.currentSoundObject) {
+      this.playbackState.isPlaying = !this.playbackState.isPlaying;
+      this.notifyStateChange();
+      return;
+    }
+
     try {
-      if (this.currentSound) {
-        // Real audio playback
-        if (this.playbackState.isPlaying) {
-          await this.currentSound.pauseAsync();
-          this.playbackState.isPlaying = false;
-        } else {
-          await this.currentSound.playAsync();
-          this.playbackState.isPlaying = true;
-        }
+      if (this.playbackState.isPlaying) {
+        await this.currentSoundObject.pauseAsync();
+        this.playbackState.isPlaying = false;
+        this.stopPositionUpdates();
       } else {
-        // Simulated playback
-        this.playbackState.isPlaying = !this.playbackState.isPlaying;
-        if (this.playbackState.isPlaying) {
-          this.setupMockStatusUpdates();
-        } else {
-          this.clearStatusUpdates();
-        }
+        await this.currentSoundObject.playAsync();
+        this.playbackState.isPlaying = true;
+        this.startPositionUpdates();
       }
       this.notifyStateChange();
     } catch (error) {
       console.error("Error toggling playback:", error);
-      throw error;
     }
   }
 
@@ -250,28 +226,43 @@ export class AudioService {
    * Stop current sound
    */
   public async stopSound(): Promise<void> {
+    await this.stopAllSounds();
+  }
+
+  async stopAllSounds(): Promise<void> {
     try {
-      if (this.currentSound) {
-        await this.currentSound.stopAsync();
-        await this.currentSound.unloadAsync();
-        this.currentSound = null;
+      // Stop single sound
+      if (this.currentSoundObject && !this.isSimulationMode) {
+        await this.currentSoundObject.stopAsync();
+        await this.currentSoundObject.unloadAsync();
+      }
+      this.currentSoundObject = null;
+
+      // Stop all mix sounds
+      for (const activeSound of this.playbackState.activeSounds) {
+        if (activeSound.sound && !this.isSimulationMode) {
+          try {
+            await activeSound.sound.stopAsync();
+            await activeSound.sound.unloadAsync();
+          } catch (error) {
+            console.warn("Error stopping active sound:", error);
+          }
+        }
       }
 
-      this.clearTimer();
-      this.clearStatusUpdates();
+      // Reset state
+      this.playbackState.isPlaying = false;
+      this.playbackState.currentSound = undefined;
+      this.playbackState.currentMix = undefined;
+      this.playbackState.activeSounds = [];
+      this.playbackState.isMixMode = false;
+      this.playbackState.position = 0;
+      this.playbackState.mode = "single";
 
-      this.playbackState = {
-        ...this.playbackState,
-        isPlaying: false,
-        currentSound: undefined,
-        position: 0,
-        duration: 0,
-        timerEndTime: undefined,
-      };
-
+      this.stopPositionUpdates();
       this.notifyStateChange();
     } catch (error) {
-      console.error("Error stopping sound:", error);
+      console.error("Error stopping sounds:", error);
     }
   }
 
@@ -279,61 +270,40 @@ export class AudioService {
    * Set volume (0.0 to 1.0)
    */
   public async setVolume(volume: number): Promise<void> {
-    try {
-      const clampedVolume = Math.max(0, Math.min(1, volume));
-      this.playbackState.volume = clampedVolume;
+    this.playbackState.volume = volume;
 
-      if (this.currentSound) {
-        await this.currentSound.setVolumeAsync(clampedVolume);
+    if (this.playbackState.isMixMode) {
+      await this.setMixVolume(volume);
+    } else {
+      if (this.currentSoundObject && !this.isSimulationMode) {
+        try {
+          await this.currentSoundObject.setVolumeAsync(volume);
+        } catch (error) {
+          console.warn("Error setting volume:", error);
+        }
       }
-
-      this.notifyStateChange();
-    } catch (error) {
-      console.error("Error setting volume:", error);
-      throw error;
     }
-  }
-
-  /**
-   * Set a timer for automatic stop
-   */
-  public setTimer(config: TimerConfig): void {
-    this.clearTimer();
-
-    const endTime = new Date(Date.now() + config.duration);
-    this.playbackState.timerEndTime = endTime;
-    this.playbackState.fadeDuration = config.fadeDuration;
-
-    this.timerInterval = setInterval(() => {
-      const now = Date.now();
-      const timeLeft = endTime.getTime() - now;
-
-      if (timeLeft <= 0) {
-        this.stopSound();
-        return;
-      }
-
-      // Start fading if within fade duration
-      if (timeLeft <= config.fadeDuration) {
-        const fadeProgress = timeLeft / config.fadeDuration;
-        const targetVolume = this.playbackState.volume * fadeProgress;
-        this.setVolume(targetVolume);
-      }
-    }, 1000);
 
     this.notifyStateChange();
   }
 
   /**
-   * Clear active timer
+   * Set a timer for automatic stop
    */
-  public clearTimer(): void {
-    if (this.timerInterval) {
-      clearInterval(this.timerInterval);
-      this.timerInterval = null;
+  public async setTimer(config: TimerConfig): Promise<void> {
+    if (this.timerTimeout) {
+      clearTimeout(this.timerTimeout);
     }
-    this.playbackState.timerEndTime = undefined;
-    this.playbackState.fadeDuration = undefined;
+
+    this.playbackState.timerEndTime = new Date(Date.now() + config.duration);
+    this.playbackState.fadeDuration = config.fadeDuration;
+
+    this.timerTimeout = setTimeout(async () => {
+      if (config.autoStop) {
+        await this.stopAllSounds();
+      }
+    }, config.duration);
+
     this.notifyStateChange();
   }
 
@@ -376,9 +346,9 @@ export class AudioService {
     this.clearStatusUpdates();
 
     this.statusUpdateInterval = setInterval(async () => {
-      if (this.currentSound) {
+      if (this.currentSoundObject) {
         try {
-          const status = await this.currentSound.getStatusAsync();
+          const status = await this.currentSoundObject.getStatusAsync();
           if (status.isLoaded) {
             this.playbackState.position = status.positionMillis || 0;
             this.playbackState.duration = status.durationMillis || 0;
@@ -406,6 +376,253 @@ export class AudioService {
   private notifyStateChange(): void {
     const state = this.getPlaybackState();
     this.stateListeners.forEach((listener) => listener(state));
+  }
+
+  private startPositionUpdates(): void {
+    this.stopPositionUpdates();
+    this.positionTimer = setInterval(() => {
+      this.updatePosition();
+    }, 1000);
+  }
+
+  private stopPositionUpdates(): void {
+    if (this.positionTimer) {
+      clearInterval(this.positionTimer);
+      this.positionTimer = null;
+    }
+  }
+
+  private async updatePosition(): Promise<void> {
+    if (this.isSimulationMode) {
+      if (this.playbackState.isPlaying) {
+        this.playbackState.position += 1000;
+        this.notifyStateChange();
+      }
+      return;
+    }
+
+    if (this.playbackState.isMixMode) {
+      // For mix mode, use the first active sound for position reference
+      const firstActiveSound = this.playbackState.activeSounds[0];
+      if (firstActiveSound?.sound) {
+        try {
+          const status = await firstActiveSound.sound.getStatusAsync();
+          if (status.isLoaded) {
+            this.playbackState.position = status.positionMillis || 0;
+            this.playbackState.duration = status.durationMillis || 0;
+          }
+        } catch (error) {
+          console.warn("Error getting mix position:", error);
+        }
+      }
+    } else if (this.currentSoundObject) {
+      try {
+        const status = await this.currentSoundObject.getStatusAsync();
+        if (status.isLoaded) {
+          this.playbackState.position = status.positionMillis || 0;
+          this.playbackState.duration = status.durationMillis || 0;
+        }
+      } catch (error) {
+        console.warn("Error getting position:", error);
+      }
+    }
+
+    this.notifyStateChange();
+  }
+
+  // Simulation methods
+  private async simulatePlaySound(soundData: Sound): Promise<void> {
+    this.playbackState.currentSound = soundData;
+    this.playbackState.isPlaying = true;
+    this.playbackState.duration = soundData.duration * 1000;
+    this.playbackState.mode = "single";
+    this.startPositionUpdates();
+    this.notifyStateChange();
+  }
+
+  private async simulateMixPlayback(mix: SoundMix): Promise<void> {
+    this.playbackState.currentMix = mix;
+    this.playbackState.isMixMode = true;
+    this.playbackState.isPlaying = true;
+    this.playbackState.mode = "mix";
+    this.playbackState.activeSounds = [];
+
+    for (const mixSound of mix.sounds) {
+      const soundData = getSoundById(mixSound.soundId);
+      if (soundData) {
+        const activeSound: ActiveSound = {
+          id: mixSound.soundId,
+          sound: null,
+          volume: mixSound.volume,
+          soundData: soundData,
+          isPlaying: true,
+          position: 0,
+          startTime: new Date(),
+        };
+        this.playbackState.activeSounds.push(activeSound);
+      }
+    }
+
+    this.startPositionUpdates();
+    this.notifyStateChange();
+  }
+
+  async setMixVolume(volume: number): Promise<void> {
+    this.playbackState.mixVolume = volume;
+
+    // Update all active sounds
+    for (const activeSound of this.playbackState.activeSounds) {
+      if (activeSound.sound && !this.isSimulationMode) {
+        try {
+          await activeSound.sound.setVolumeAsync(activeSound.volume * volume);
+        } catch (error) {
+          console.warn("Error updating mix volume:", error);
+        }
+      }
+    }
+
+    this.notifyStateChange();
+  }
+
+  async playMix(mix: SoundMix): Promise<void> {
+    try {
+      await this.initialize();
+      await this.stopAllSounds();
+
+      this.playbackState.isMixMode = true;
+      this.playbackState.currentMix = mix;
+      this.playbackState.activeSounds = [];
+
+      // Play each sound in the mix
+      for (const mixSound of mix.sounds) {
+        await this.addSoundToMix(mixSound.soundId, mixSound.volume);
+      }
+
+      this.playbackState.isPlaying = true;
+      this.playbackState.mode = "mix";
+      this.notifyStateChange();
+    } catch (error) {
+      console.error("Error playing mix:", error);
+      // Fallback to simulation
+      await this.simulateMixPlayback(mix);
+    }
+  }
+
+  async addSoundToMix(soundId: string, volume: number = 0.8): Promise<void> {
+    if (!this.playbackState.isMixMode) {
+      this.playbackState.isMixMode = true;
+      this.playbackState.mode = "mix";
+    }
+
+    const soundData = getSoundById(soundId);
+    if (!soundData) {
+      throw new Error(`Sound not found: ${soundId}`);
+    }
+
+    // Check if sound is already in mix
+    const existingSound = this.playbackState.activeSounds.find(
+      (as) => as.id === soundId
+    );
+    if (existingSound) {
+      // Update volume
+      existingSound.volume = volume;
+      if (existingSound.sound && !this.isSimulationMode) {
+        await existingSound.sound.setVolumeAsync(volume);
+      }
+      return;
+    }
+
+    if (this.isSimulationMode) {
+      // Simulation mode
+      const activeSound: ActiveSound = {
+        id: soundId,
+        sound: null,
+        volume: volume,
+        soundData: soundData,
+        isPlaying: true,
+        position: 0,
+        startTime: new Date(),
+      };
+      this.playbackState.activeSounds.push(activeSound);
+    } else {
+      // Real audio mode
+      const audioAsset = this.audioAssets[soundData.fileName];
+      if (!audioAsset) {
+        console.warn(`Audio asset not found for ${soundId}`);
+        return;
+      }
+
+      const { sound } = await Audio.Sound.createAsync(audioAsset, {
+        shouldPlay: this.playbackState.isPlaying,
+        isLooping: soundData.isLooped,
+        volume: volume * this.playbackState.mixVolume,
+      });
+
+      const activeSound: ActiveSound = {
+        id: soundId,
+        sound: sound,
+        volume: volume,
+        soundData: soundData,
+        isPlaying: this.playbackState.isPlaying,
+        position: 0,
+        startTime: new Date(),
+      };
+
+      this.playbackState.activeSounds.push(activeSound);
+    }
+
+    this.notifyStateChange();
+  }
+
+  async removeSoundFromMix(soundId: string): Promise<void> {
+    const soundIndex = this.playbackState.activeSounds.findIndex(
+      (as) => as.id === soundId
+    );
+    if (soundIndex === -1) return;
+
+    const activeSound = this.playbackState.activeSounds[soundIndex];
+
+    if (activeSound.sound && !this.isSimulationMode) {
+      try {
+        await activeSound.sound.stopAsync();
+        await activeSound.sound.unloadAsync();
+      } catch (error) {
+        console.warn("Error stopping sound:", error);
+      }
+    }
+
+    this.playbackState.activeSounds.splice(soundIndex, 1);
+
+    // If no sounds left, stop mix mode
+    if (this.playbackState.activeSounds.length === 0) {
+      this.playbackState.isMixMode = false;
+      this.playbackState.isPlaying = false;
+      this.playbackState.currentMix = undefined;
+      this.playbackState.mode = "single";
+    }
+
+    this.notifyStateChange();
+  }
+
+  async setSoundVolumeInMix(soundId: string, volume: number): Promise<void> {
+    const activeSound = this.playbackState.activeSounds.find(
+      (as) => as.id === soundId
+    );
+    if (!activeSound) return;
+
+    activeSound.volume = volume;
+
+    if (activeSound.sound && !this.isSimulationMode) {
+      try {
+        await activeSound.sound.setVolumeAsync(
+          volume * this.playbackState.mixVolume
+        );
+      } catch (error) {
+        console.warn("Error setting sound volume:", error);
+      }
+    }
+
+    this.notifyStateChange();
   }
 }
 
